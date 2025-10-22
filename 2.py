@@ -33,22 +33,41 @@ ALLOWED_FORMULA_SYMBOLS = ALPHABET + ''.join(OPERATORS.keys()) + '( ?)'
 class FormulaEditor:
     def __init__(self) -> None:
         self.session = PromptSession()
+        self.formula = ''
         buffer = self.session.default_buffer
         buffer.on_text_changed += self._on_text_changed
+        buffer.on_cursor_position_changed += self._on_cursor_position_changed
 
     def _process_text(self, text: str) -> str:
+        args, formula = text.split(' =', 1)
+        if formula.startswith(' '):
+            formula = formula[1:]
+
+        if self.formula != formula:
+            args = '(' + ','.join(char for char in ALPHABET if char in formula) + ')'
+
+        self.formula = formula
+
         for new, old in OPERATORS.items():
             for var in old:
-                text = text.replace(var, new)
-        return ''.join(char for char in text if char in ALLOWED_FORMULA_SYMBOLS)
+                formula = formula.replace(var, new)
+        return args + ' = ' + ''.join(char for char in formula if char in ALLOWED_FORMULA_SYMBOLS)
 
     def _on_text_changed(self, buffer: Buffer) -> None:
-        text, cursor_position = self._process_text(buffer.text), buffer.cursor_position
-        buffer.text = text
-        buffer.cursor_position = cursor_position
+        start_pos = buffer.text.index(' =')
+        buffer.text = self._process_text(buffer.text)
+        buffer.cursor_position += buffer.text.index(' =') - start_pos
 
-    def _fetch_variables(self, formula: str) -> set[str]:
-        return set(char for char in ALPHABET if char in formula)
+    def _on_cursor_position_changed(self, buffer: Buffer) -> None:
+        index = buffer.text.index(' =')
+        if buffer.cursor_position == index + 2:
+            buffer.cursor_position = index - 1
+        if buffer.cursor_position == index:
+            buffer.cursor_position = index + 3
+
+    def _fetch_data(self, text: str) -> tuple[set[str], str]:
+        args, formula = text.split(' = ')
+        return set(args[1:-1].split(',')), formula
 
     def _make_expression(self, variables: set[str], formula: str) -> tuple[Callable[..., int | bool]]:
         '''
@@ -95,8 +114,8 @@ class FormulaEditor:
         return tuple(get_processed_formulas())
 
     def run(self) -> tuple[tuple[Callable[..., int | bool]], set[str]]:
-        formula = self.session.prompt('F = ')
-        variables = self._fetch_variables(formula)
+        text = self.session.prompt('F', default='() = ')
+        variables, formula = self._fetch_data(text)
         return self._make_expression(variables, formula), variables
 
 
@@ -147,7 +166,7 @@ class TableEditor:
 
         @kb.add('up')
         def _(event):
-            if self.table[self.row] == [' '] * len(self.headers):
+            if self.row >= 0 and self.table[self.row] == [' '] * len(self.headers):
                 del self.table[self.row]
             if self.row >= 0:
                 if self.col != len(self.table) - 1:
@@ -269,17 +288,17 @@ def main():
                 return False
         return True
 
-    def permutation_columns(table: list[tuple[int]], function: Callable[..., int | bool]) -> str | None:
+    def permutation_columns(table: list[tuple[int]], function: Callable[..., int | bool]) -> Generator[str]:
         for letters in permutations(variables):
-            if matching_headers(letters) and all(function(**dict(zip(letters, rows[:-1]))) == rows[-1] for rows in table):
-                return ''.join(letters)
+            if matching_headers(letters) and all(function(**dict(zip(letters, row[:-1]))) == row[-1] for row in table):
+                yield ''.join(letters)
 
     rows = set()
     cells = []
     operators = set()
     for index, function in enumerate(functions):
         for table, values in iterating_table(original_table):
-            if letters := permutation_columns(table, function):
+            for letters in permutation_columns(table, function):
                 rows.add(letters)
                 if values:
                     cells.append(values)
