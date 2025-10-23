@@ -23,7 +23,7 @@ def f(n: int, r: int = None, i: tuple[int] = (), e: tuple[int] = (), c: int = No
             (True if r is None else n == r) and \
             (_passed == len(i)) and \
             (_count == c if c else True) and \
-            check(_steps + (_i,))
+            check(_steps + (_i + 1,))
         ) else () if (
             (r is not None and (n < r if (n > commands(n)[0]) else n > r)) or \
             (n in e) or \
@@ -35,7 +35,7 @@ def f(n: int, r: int = None, i: tuple[int] = (), e: tuple[int] = (), c: int = No
             check=check,
             _passed=_passed + (n in i),
             _count=_count + 1,
-            _steps=_steps + (_i,)
+            _steps=_steps + (_i + 1,)
         ) for _i, n in enumerate(commands(n))),
         start=()
     )
@@ -139,17 +139,17 @@ def test():
             n + 1,
             n + 2,
             n * 2,
-        ], check=lambda steps: not (2, 2) in zip(steps, steps[1:]))),
+        ], check=lambda steps: not (3, 3) in zip(steps, steps[1:]))),
         3162: lambda: len(f(2, 12, commands=lambda n: [
             n + 1,
             n + 2,
             n * 2,
-        ], check=lambda steps: steps.count(2) == 1)),
+        ], check=lambda steps: steps.count(3) == 1)),
         4275: lambda: len(f(2, 200, commands=lambda n: [
             n + 2,
             n * 3,
             n * 5,
-        ], check=lambda steps: (steps.count(1) + steps.count(2)) <= 3)),
+        ], check=lambda steps: (steps.count(2) + steps.count(3)) <= 3)),
         4492: lambda: len(f(2, 40, type('', (), {
             '__len__': lambda _: 1,
             '__contains__': lambda _, v: v in range(3, 40, 2)
@@ -171,5 +171,30 @@ def test():
         print(f'{number}. {answer()}')
 
 
+def main():
+    print('Enter the function to define commands list (the int argument is given as n):')
+    commands = eval('lambda n: ' + input('return '))
+    print('Enter the original number:')
+    number = int(input('n = '))
+    print('Enter the result number (empty for none):')
+    result = int(_) if (_ := input('r = ')) else None
+    print('Enter the tuple for values that must be included:')
+    included = eval(_) if (_ := input('i = ')) else ()
+    if isinstance(included, int):
+        included = (included,)
+    print('Enter the tuple for values that must be excluded:')
+    excluded = eval(_) if (_ := input('e = ')) else ()
+    if isinstance(excluded, int):
+        excluded = (excluded,)
+    print('Enter the count of commands (empty for none):')
+    count = int(_) if (_ := input('c = ')) else None
+    print('Enter the function for selecting commands (empty for none) (the tuple[int] argument is given as nums):')
+    check = eval('lambda nums: ' + (input('return ') or 'True'))
+
+    answer = f(number, result, included, excluded, count, commands=commands, check=check)
+    print('\nTo get the answer you need, write the code or the result of the algorithm given as the answer variable:')
+    print('\nResult:', eval(input('print: '), locals={'answer': answer}))
+
+
 if __name__ == '__main__':
-    test()
+    main()
