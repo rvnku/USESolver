@@ -1,3 +1,11 @@
+from prompt_toolkit import PromptSession
+from prompt_toolkit.lexers import PygmentsLexer
+from prompt_toolkit.styles.pygments import style_from_pygments_cls
+from prompt_toolkit.formatted_text import PygmentsTokens
+from prompt_toolkit.key_binding import KeyBindings
+from pygments.lexers.python import PythonLexer
+from pygments.styles import get_style_by_name
+from pygments import lex
 from typing import Callable
 
 
@@ -15,16 +23,16 @@ def f(n: int, r: int = None, i: tuple[int] = (), e: tuple[int] = (), c: int = No
         check (`Callable`, optional): the function for creating conditions in the selection of commands
 
     Returns:
-        `tuple`: all program execution results
+        `tuple` or `int`: all program execution results
 
     '''
     return sum((
-        (n,) if (
+        ((n,) if r is None else 1) if (
             (True if r is None else n == r) and \
             (_passed == len(i)) and \
             (_count == c if c else True) and \
             check(_steps + (_i + 1,))
-        ) else () if (
+        ) else (() if r is None else 0) if (
             (r is not None and (n < r if (n > commands(n)[0]) else n > r)) or \
             (n in e) or \
             (c and _count > c) or \
@@ -37,7 +45,7 @@ def f(n: int, r: int = None, i: tuple[int] = (), e: tuple[int] = (), c: int = No
             _count=_count + 1,
             _steps=_steps + (_i + 1,)
         ) for _i, n in enumerate(commands(n))),
-        start=()
+        start=() if r is None else 0
     )
 
 
@@ -172,28 +180,60 @@ def test():
 
 
 def main():
+    style = style_from_pygments_cls(get_style_by_name('lightbulb'))
+    session_multiline = PromptSession(style=style, lexer=PygmentsLexer(PythonLexer))
+    session = PromptSession(style=style, lexer=PygmentsLexer(PythonLexer))
+
+    def prompt(message, *args, **kwargs):
+        tokens = list(lex(message, PythonLexer()))
+        return session.prompt(PygmentsTokens(tokens[:-1]), *args, **kwargs)
+
+    binding = KeyBindings()
+    @binding.add('enter')
+    def _(event):
+        buffer = event.current_buffer
+        if not buffer.text or buffer.text.endswith('\n\n'):
+            buffer.validate_and_handle()
+        else:
+            buffer.insert_text('\n')
+    @binding.add('tab')
+    def _(event):
+        event.current_buffer.insert_text('    ')
+    
+    context = {}
+
+    print('You can write code that be used as global variables:')
+    exec(session_multiline.prompt(multiline=True, key_bindings=binding), context)
+
     print('Enter the function to define commands list (the int argument is given as n):')
-    commands = eval('lambda n: ' + input('return '))
+    commands = eval('lambda n: ' + prompt('lambda n: '), context)
+
     print('Enter the original number:')
-    number = int(input('n = '))
+    number = int(eval(prompt('n = '), context))
+
     print('Enter the result number (empty for none):')
-    result = int(_) if (_ := input('r = ')) else None
+    result = int(eval(_, context)) if (_ := prompt('r = ', placeholder='None')) else None
+
     print('Enter the tuple for values that must be included:')
-    included = eval(_) if (_ := input('i = ')) else ()
+    included = eval(_, context) if (_ := prompt('i = ', placeholder='()')) else ()
     if isinstance(included, int):
         included = (included,)
+    
     print('Enter the tuple for values that must be excluded:')
-    excluded = eval(_) if (_ := input('e = ')) else ()
+    excluded = eval(_, context) if (_ := prompt('e = ', placeholder='()')) else ()
     if isinstance(excluded, int):
         excluded = (excluded,)
+    
     print('Enter the count of commands (empty for none):')
-    count = int(_) if (_ := input('c = ')) else None
+    count = int(eval(_, context)) if (_ := prompt('c = ', placeholder='None')) else None
+
     print('Enter the function for selecting commands (empty for none) (the tuple[int] argument is given as nums):')
-    check = eval('lambda nums: ' + (input('return ') or 'True'))
+    check = eval('lambda l: ' + (prompt('lambda l: ', placeholder='True') or 'True'), context)
 
     answer = f(number, result, included, excluded, count, commands=commands, check=check)
+    
     print('\nTo get the answer you need, write the code or the result of the algorithm given as the answer variable:')
-    print('\nResult:', eval(input('print: '), locals={'answer': answer}))
+    print('\nResult:', eval(prompt('lambda answer: ', placeholder=''), context, {'answer': answer}))
 
 
 if __name__ == '__main__':
